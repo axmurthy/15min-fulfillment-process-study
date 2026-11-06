@@ -1,0 +1,87 @@
+# =============================================================================
+# Baseline configuration for the 15-minute grocery delivery DES.
+#
+# PROVENANCE TAGS (every numeric input is one of):
+#   OBSERVED    = measured from a primary dataset we actually hold (none here;
+#                 this is a simulation study, so there are no OBSERVED inputs).
+#   PUBLISHED   = a published estimate / industry figure (see data/sources_register.csv).
+#   ASSUMPTION  = a transparent modelling assumption chosen for plausibility and
+#                 tested via sensitivity analysis. NOT a measured fact.
+#
+# Nothing in this file is order-level company data. Population density is NOT
+# order demand; the arrival rates below are ASSUMPTIONS, not observations.
+# Travel times are routing/geometry estimates, NOT observed delivery times.
+# =============================================================================
+
+meta:
+  project: "15-minute fulfillment process study"
+  neighborhood: "San Francisco Mission District (proposed in Phase 1)"
+  base_seed: 20260101            # master seed; replications spawn children from this
+
+simulation:
+  horizon_min: 240               # ASSUMPTION: 4-hour analysis window per replication
+  warmup_min: 30                 # ASSUMPTION: discard orders accepted before this (transient)
+  n_replications: 20             # independent replications (different seed streams)
+  target_min: 15.0               # DEFINITION: delivery-clock target (order accepted -> doorstep)
+
+arrivals:
+  # DEFINITION of process + ASSUMPTION of rates. We use a non-homogeneous Poisson
+  # process with piecewise-constant rate. Alternatives ("poisson_constant",
+  # "deterministic") exist for verification / sensitivity (see distributions.py).
+  process: "nhpp_piecewise"
+  demand_multiplier: 1.0         # scenario factor: scales ALL period rates (1.0 = baseline)
+  # Rates are ASSUMPTIONS calibrated to a single small dark store serving one
+  # neighbourhood slice: ~12 orders/hr off-peak, ~30 orders/hr at peak. (Whole-
+  # store figures of 1000-1700 orders/day are spread across many couriers; here
+  # we model a tractable slice.) These are NOT observed demand.
+  periods:
+    - {name: "offpeak", start_min: 0,   end_min: 120, orders_per_min: 0.20}   # ASSUMPTION ~12/hr
+    - {name: "peak",    start_min: 120, end_min: 240, orders_per_min: 0.50}   # ASSUMPTION ~30/hr
+
+basket:
+  distribution: "neg_binomial"   # ASSUMPTION: overdispersed item counts
+  mean_items: 8.0                # PUBLISHED-proxy: q-commerce baskets are small top-up shops
+  dispersion_k: 4.0              # ASSUMPTION: controls variance (var = mu + mu^2/k)
+  min_items: 1                   # DEFINITION
+
+inventory:
+  availability_prob: 0.97        # ASSUMPTION: P(order fully fulfillable at accept)
+                                 # unavailable -> state "unfulfilled_stockout" (counted, not served)
+
+picking:
+  n_pickers: 3                   # controllable factor
+  setup_min: 0.5                 # ASSUMPTION: fixed per-order handling
+  per_item_min: 0.35             # ASSUMPTION: walk+grab time per item
+  pack_min: 1.0                  # ASSUMPTION: bagging/packing per order
+  cv: 0.25                       # ASSUMPTION: coeff. of variation (gamma) of processing time
+
+courier:
+  n_couriers: 8                  # controllable factor
+  dispatch_policy: "assign_at_accept"  # overlap assignment with prep. Alt: "assign_at_ready"
+  speed_kmh: 15.0                # ASSUMPTION: SAFE effective e-bike speed incl. stops/signals
+  load_min: 1.5                  # ASSUMPTION: handoff/load at the MFC
+  access_min_mean: 2.0           # ASSUMPTION: building access / find-the-door at customer
+  access_cv: 0.4                 # ASSUMPTION
+  return_speed_kmh: 15.0         # ASSUMPTION: return/repositioning speed (counted in capacity+cost)
+
+geography:
+  service_radius_km: 1.5         # controllable factor; customers uniform over disk of this radius
+
+patience:
+  cancel_after_min: 30.0         # ASSUMPTION: customer cancels if not picked up by a courier in time
+
+costs:
+  picker_wage_per_hr: 22.0       # PUBLISHED-proxy: warehouse/picker wage, SF/San Jose metro
+  courier_pay_model: "hourly"    # "hourly" | "per_order"
+  courier_wage_per_hr: 24.0      # PUBLISHED-proxy
+  courier_per_order: 4.0         # PUBLISHED-proxy (used only if pay_model == per_order)
+  mfc_rent_per_day: 400.0        # ASSUMPTION: small dark-store daily rent allocation
+  operating_hours_per_day: 14.0  # ASSUMPTION: for hourly rent allocation
+  packaging_per_order: 0.35      # ASSUMPTION
+
+economics:
+  aov_usd: 25.0                  # PUBLISHED-proxy average order value (operator sales, NOT revenue retained)
+  product_margin_frac: 0.12      # ASSUMPTION: gross product margin retained by operator
+  delivery_fee_usd: 2.99         # ASSUMPTION
+  ad_revenue_per_order_usd: 0.50 # PUBLISHED-proxy: retail-media contribution per order
+  shrink_frac: 0.018             # PUBLISHED-proxy: inventory loss as frac of order value
